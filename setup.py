@@ -2,7 +2,7 @@
 
 from setuptools import setup
 
-PACKAGE_NAMES = ['module_3', 'module_4']
+PACKAGE_NAMES = ['module_4']
 
 KEYWORDS = [
     'machine learning', 'deep learning', 'artificial intelligence',
@@ -24,14 +24,14 @@ CLASSIFIERS = [
 ]
 
 if __name__ == '__main__':
-    setup(name='ams-ml-python-course',
+    setup(name='ams2019_short_course',
           version='0.1',
           description=SHORT_DESCRIPTION,
           long_description=LONG_DESCRIPTION,
           license='MIT',
-          author='David John Gagne II',
-          author_email='dgagne@ucar.edu',
-          url='https://github.com/djgagne/ams-ml-python-course',
+          author='Ryan Lagerquist',
+          author_email='ryan.lagerquist@ou.edu',
+          url='https://github.com/thunderhoser/ams2019_short_course',
           packages=PACKAGE_NAMES,
           scripts=[],
           keywords=KEYWORDS,
