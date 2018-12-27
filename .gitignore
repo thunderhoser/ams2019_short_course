@@ -12,4 +12,8 @@ dist/
 .idea/
 *.iml
 
+# Ryan's shit.
 figures/
+slurm/
+.idea/
+module_4/.ipynb_checkpoints
