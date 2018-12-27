@@ -23,13 +23,13 @@ from module_4 import performance_diagrams
 from module_4 import attributes_diagrams
 
 # Directories.
-DEFAULT_IMAGE_DIR_NAME = (
-    '/home/ryan.lagerquist/Downloads/ams2019_short_course/'
-    'track_data_ncar_ams_3km_nc_small')
-DEFAULT_FEATURE_DIR_NAME = (
-    '/home/ryan.lagerquist/Downloads/ams2019_short_course/'
-    'track_data_ncar_ams_3km_csv_small')
-DEFAULT_OUTPUT_DIR_NAME = '/home/ryan.lagerquist/Downloads/ams2019_short_course'
+MAIN_DIRECTORY_NAME = '/home/ryan.lagerquist/Downloads/ams2019_short_course'
+
+DEFAULT_IMAGE_DIR_NAME = '{0:s}/track_data_ncar_ams_3km_nc_small'.format(
+    MAIN_DIRECTORY_NAME)
+DEFAULT_FEATURE_DIR_NAME = '{0:s}/track_data_ncar_ams_3km_csv_small'.format(
+    MAIN_DIRECTORY_NAME)
+DEFAULT_OUTPUT_DIR_NAME = MAIN_DIRECTORY_NAME + ''
 
 # Plotting constants.
 FIGURE_WIDTH_INCHES = 15
@@ -118,8 +118,8 @@ FEATURE_MEANS_KEY = 'feature_means'
 FEATURE_STDEVS_KEY = 'feature_standard_deviations'
 
 NOVEL_IMAGES_ACTUAL_KEY = 'novel_image_matrix_actual'
-NOVEL_IMAGES_RECON_KEY = 'novel_image_matrix_recon'
-NOVEL_IMAGES_RECON_EXPECTED_KEY = 'novel_image_matrix_recon_expected'
+NOVEL_IMAGES_UPCONV_KEY = 'novel_image_matrix_upconv'
+NOVEL_IMAGES_UPCONV_SVD_KEY = 'novel_image_matrix_upconv_svd'
 
 # More plotting constants.
 THIS_COLOUR_LIST = [
@@ -234,175 +234,6 @@ def time_unix_to_string(unix_time_sec, time_format):
     """
 
     return time.strftime(time_format, time.gmtime(unix_time_sec))
-
-
-def _remove_future_data(predictor_table):
-    """Removes future data from predictors.
-
-    :param predictor_table: pandas DataFrame with predictor values.  Each row is
-        one storm object.
-    :return: predictor_table: Same but with fewer columns.
-    """
-
-    predictor_names = list(predictor_table)
-    columns_to_remove = [p for p in predictor_names if 'future' in p]
-
-    return predictor_table.drop(columns_to_remove, axis=1, inplace=False)
-
-
-def _feature_file_name_to_date(csv_file_name):
-    """Parses date from name of feature (CSV) file.
-
-    :param csv_file_name: Path to input file.
-    :return: date_string: Date (format "yyyymmdd").
-    """
-
-    pathless_file_name = os.path.split(csv_file_name)[-1]
-    date_string = pathless_file_name.replace(
-        'track_step_NCARSTORM_d01_', '').replace('-0000.csv', '')
-
-    # Verify.
-    time_string_to_unix(time_string=date_string, time_format=DATE_FORMAT)
-    return date_string
-
-
-def find_many_feature_files(first_date_string, last_date_string,
-                            feature_dir_name=DEFAULT_FEATURE_DIR_NAME):
-    """Finds feature files in the given date range.
-
-    :param first_date_string: First date ("yyyymmdd") in range.
-    :param last_date_string: Last date ("yyyymmdd") in range.
-    :param feature_dir_name: Name of directory with feature (CSV) files.
-    :return: csv_file_names: 1-D list of paths to feature files.
-    """
-
-    first_time_unix_sec = time_string_to_unix(
-        time_string=first_date_string, time_format=DATE_FORMAT)
-    last_time_unix_sec = time_string_to_unix(
-        time_string=last_date_string, time_format=DATE_FORMAT)
-
-    csv_file_pattern = '{0:s}/track_step_NCARSTORM_d01_{1:s}-0000.csv'.format(
-        feature_dir_name, DATE_FORMAT_REGEX)
-    csv_file_names = glob.glob(csv_file_pattern)
-    csv_file_names.sort()
-
-    file_date_strings = [_feature_file_name_to_date(f) for f in csv_file_names]
-    file_times_unix_sec = numpy.array([
-        time_string_to_unix(time_string=d, time_format=DATE_FORMAT)
-        for d in file_date_strings
-    ], dtype=int)
-
-    good_indices = numpy.where(numpy.logical_and(
-        file_times_unix_sec >= first_time_unix_sec,
-        file_times_unix_sec <= last_time_unix_sec
-    ))[0]
-
-    return [csv_file_names[k] for k in good_indices]
-
-
-def read_feature_file(csv_file_name):
-    """Reads features from CSV file.
-
-    :param csv_file_name: Path to input file.
-    :return: metadata_table: pandas DataFrame with metadata.  Each row is one
-        storm object.
-    :return: predictor_table: pandas DataFrame with predictor values.  Each row
-        is one storm object.
-    :return: target_table: pandas DataFrame with target values.  Each row is one
-        storm object.
-    """
-
-    predictor_table = pandas.read_csv(csv_file_name, header=0, sep=',')
-    predictor_table.drop(CSV_EXTRANEOUS_COLUMNS, axis=1, inplace=True)
-
-    metadata_table = predictor_table[CSV_METADATA_COLUMNS]
-    predictor_table.drop(CSV_METADATA_COLUMNS, axis=1, inplace=True)
-
-    target_table = predictor_table[[CSV_TARGET_NAME]]
-    predictor_table.drop([CSV_TARGET_NAME], axis=1, inplace=True)
-    predictor_table = _remove_future_data(predictor_table)
-
-    return metadata_table, predictor_table, target_table
-
-
-def read_many_feature_files(csv_file_names):
-    """Reads features from many CSV files.
-
-    :param csv_file_names: 1-D list of paths to input files.
-    :return: metadata_table: See doc for `read_feature_file`.
-    :return: predictor_table: Same.
-    :return: target_table: Same.
-    """
-
-    num_files = len(csv_file_names)
-    list_of_metadata_tables = [pandas.DataFrame()] * num_files
-    list_of_predictor_tables = [pandas.DataFrame()] * num_files
-    list_of_target_tables = [pandas.DataFrame()] * num_files
-
-    for i in range(num_files):
-        print('Reading data from: "{0:s}"...'.format(csv_file_names[i]))
-
-        (list_of_metadata_tables[i], list_of_predictor_tables[i],
-         list_of_target_tables[i]
-         ) = read_feature_file(csv_file_names[i])
-
-        if i == 0:
-            continue
-
-        list_of_metadata_tables[i] = list_of_metadata_tables[i].align(
-            list_of_metadata_tables[0], axis=1
-        )[0]
-
-        list_of_predictor_tables[i] = list_of_predictor_tables[i].align(
-            list_of_predictor_tables[0], axis=1
-        )[0]
-
-        list_of_target_tables[i] = list_of_target_tables[i].align(
-            list_of_target_tables[0], axis=1
-        )[0]
-
-    metadata_table = pandas.concat(
-        list_of_metadata_tables, axis=0, ignore_index=True)
-    predictor_table = pandas.concat(
-        list_of_predictor_tables, axis=0, ignore_index=True)
-    target_table = pandas.concat(
-        list_of_target_tables, axis=0, ignore_index=True)
-
-    return metadata_table, predictor_table, target_table
-
-
-def feature_files_example1():
-    """Runs Example 1 for feature files."""
-
-    feature_file_names = find_many_feature_files(
-        first_date_string='20150701', last_date_string='20150731')
-    metadata_table, predictor_table, target_table = read_many_feature_files(
-        feature_file_names)
-
-    print(MINOR_SEPARATOR_STRING)
-    print('Variables in metadata are as follows:')
-    for this_column in list(metadata_table):
-        print(this_column)
-
-    print('\nPredictor variables are as follows:')
-    for this_column in list(predictor_table):
-        print(this_column)
-
-    print('\nTarget variables are as follows:')
-    for this_column in list(target_table):
-        print(this_column)
-
-    this_predictor_name = list(predictor_table)[0]
-    these_predictor_values = predictor_table[this_predictor_name].values[:10]
-    print('\nSome values of predictor variable "{0:s}":\n{1:s}'.format(
-        this_predictor_name, str(these_predictor_values)
-    ))
-
-    this_target_name = list(target_table)[0]
-    these_target_values = target_table[this_target_name].values[:10]
-    print('\nSome values of target variable "{0:s}":\n{1:s}'.format(
-        this_target_name, str(these_target_values)
-    ))
 
 
 def _image_file_name_to_date(netcdf_file_name):
@@ -3253,8 +3084,36 @@ def setup_ucn(
     return ucn_model_object
 
 
-def setup_ucn_example1(cnn_model_object):
-    """Example 1 of UCN architecture (yes transposed conv, no smoothing).
+def get_cnn_flatten_layer(cnn_model_object):
+    """Finds flattening layer in CNN.
+
+    This method assumes that there is only one flattening layer.  If there are
+    several, this method will return the first (shallowest).
+
+    :param cnn_model_object: Instance of `keras.models.Model`.
+    :return: layer_name: Name of flattening layer.
+    :raises: TypeError: if flattening layer cannot be found.
+    """
+
+    layer_names = [lyr.name for lyr in cnn_model_object.layers]
+
+    flattening_flags = numpy.array(
+        ['flatten' in n for n in layer_names], dtype=bool)
+    flattening_indices = numpy.where(flattening_flags)[0]
+
+    if len(flattening_indices) == 0:
+        error_string = (
+            'Cannot find flattening layer in model.  Layer names are listed '
+            'below.\n{0:s}'
+        ).format(str(layer_names))
+
+        raise TypeError(error_string)
+
+    return layer_names[flattening_indices[0]]
+
+
+def setup_ucn_example(cnn_model_object):
+    """Example of UCN architecture (with transposed conv, no smoothing).
 
     :param cnn_model_object: Trained CNN (instance of `keras.models.Model`).
     """
@@ -3280,64 +3139,6 @@ def setup_ucn_example1(cnn_model_object):
         upsampling_factors=upsampling_factors,
         num_output_channels=num_output_channels,
         use_transposed_conv=True, smoothing_radius_px=None)
-
-
-def setup_ucn_example2(cnn_model_object):
-    """Example 2 of UCN architecture (no transposed conv, no smoothing).
-
-    :param cnn_model_object: Trained CNN (instance of `keras.models.Model`).
-    """
-
-    cnn_feature_layer_name = get_cnn_flatten_layer(cnn_model_object)
-    cnn_feature_layer_object = cnn_model_object.get_layer(
-        name=cnn_feature_layer_name)
-    cnn_feature_dimensions = numpy.array(
-        cnn_feature_layer_object.input.shape[1:], dtype=int)
-
-    num_input_features = numpy.prod(cnn_feature_dimensions)
-    first_num_rows = cnn_feature_dimensions[0]
-    first_num_columns = cnn_feature_dimensions[1]
-    num_output_channels = numpy.array(
-        cnn_model_object.input.shape[1:], dtype=int
-    )[-1]
-
-    upsampling_factors = numpy.array([2, 1, 1, 2, 1, 1], dtype=int)
-
-    ucn_model_object = setup_ucn(
-        num_input_features=num_input_features, first_num_rows=first_num_rows,
-        first_num_columns=first_num_columns,
-        upsampling_factors=upsampling_factors,
-        num_output_channels=num_output_channels,
-        use_transposed_conv=False, smoothing_radius_px=None)
-
-
-def setup_ucn_example3(cnn_model_object):
-    """Example 3 of UCN architecture (no transposed conv, yes smoothing).
-
-    :param cnn_model_object: Trained CNN (instance of `keras.models.Model`).
-    """
-
-    cnn_feature_layer_name = get_cnn_flatten_layer(cnn_model_object)
-    cnn_feature_layer_object = cnn_model_object.get_layer(
-        name=cnn_feature_layer_name)
-    cnn_feature_dimensions = numpy.array(
-        cnn_feature_layer_object.input.shape[1:], dtype=int)
-
-    num_input_features = numpy.prod(cnn_feature_dimensions)
-    first_num_rows = cnn_feature_dimensions[0]
-    first_num_columns = cnn_feature_dimensions[1]
-    num_output_channels = numpy.array(
-        cnn_model_object.input.shape[1:], dtype=int
-    )[-1]
-
-    upsampling_factors = numpy.array([2, 1, 1, 2, 1, 1], dtype=int)
-
-    ucn_model_object = setup_ucn(
-        num_input_features=num_input_features, first_num_rows=first_num_rows,
-        first_num_columns=first_num_columns,
-        upsampling_factors=upsampling_factors,
-        num_output_channels=num_output_channels,
-        use_transposed_conv=False, smoothing_radius_px=1)
 
 
 def ucn_generator(netcdf_file_names, num_examples_per_batch, normalization_dict,
@@ -3529,34 +3330,6 @@ def train_ucn(
     return ucn_metadata_dict
 
 
-def get_cnn_flatten_layer(cnn_model_object):
-    """Finds flattening layer in CNN.
-
-    This method assumes that there is only one flattening layer.  If there are
-    several, this method will return the first (shallowest).
-
-    :param cnn_model_object: Instance of `keras.models.Model`.
-    :return: layer_name: Name of flattening layer.
-    :raises: TypeError: if flattening layer cannot be found.
-    """
-
-    layer_names = [lyr.name for lyr in cnn_model_object.layers]
-
-    flattening_flags = numpy.array(
-        ['flatten' in n for n in layer_names], dtype=bool)
-    flattening_indices = numpy.where(flattening_flags)[0]
-
-    if len(flattening_indices) == 0:
-        error_string = (
-            'Cannot find flattening layer in model.  Layer names are listed '
-            'below.\n{0:s}'
-        ).format(str(layer_names))
-
-        raise TypeError(error_string)
-
-    return layer_names[flattening_indices[0]]
-
-
 def train_ucn_example(ucn_model_object, training_file_names, normalization_dict,
                       cnn_model_object, cnn_file_name):
     """Actually trains the UCN (upconvolutional network).
@@ -3584,19 +3357,23 @@ def train_ucn_example(ucn_model_object, training_file_names, normalization_dict,
         num_validation_batches_per_epoch=10)
 
 
-def plot_ucn_example1(
-        validation_image_dict, normalization_dict, cnn_model_object,
-        ucn_model_object):
-    """Plots UCN output for random validation example.
+def apply_ucn_example1(
+        validation_image_dict, normalization_dict, cnn_model_object):
+    """Uses upconvnet to reconstruct random validation example.
 
     :param validation_image_dict: Dictionary created by `read_many_image_files`.
     :param normalization_dict: Dictionary created by
         `get_image_normalization_params`.
     :param cnn_model_object: Trained instance of `keras.models.Model`,
-        representing the CNN or "encoder".
-    :param ucn_model_object: Trained instance of `keras.models.Model`,
-        representing the UCN or "decoder".
+        representing the CNN that goes with the upconvnet.
     """
+
+    ucn_file_name = '{0:s}/pretrained_cnn/pretrained_ucn.h5'.format(
+        DEFAULT_OUTPUT_DIR_NAME)
+    ucn_metafile_name = find_model_metafile(model_file_name=ucn_file_name)
+
+    ucn_model_object = read_keras_model(ucn_file_name)
+    ucn_metadata_dict = read_model_metadata(ucn_metafile_name)
 
     image_matrix = validation_image_dict[PREDICTOR_MATRIX_KEY][0, ...]
     predictor_names = validation_image_dict[PREDICTOR_NAMES_KEY]
@@ -3628,22 +3405,91 @@ def plot_ucn_example1(
     min_colour_temp_kelvins = numpy.percentile(combined_temp_matrix_kelvins, 1)
     max_colour_temp_kelvins = numpy.percentile(combined_temp_matrix_kelvins, 99)
 
-    print('\nReal example (input to CNN):\n')
-    plot_many_predictors_with_barbs(
+    figure_object, _ = plot_many_predictors_with_barbs(
         predictor_matrix=image_matrix,
         predictor_names=predictor_names,
         min_colour_temp_kelvins=min_colour_temp_kelvins,
         max_colour_temp_kelvins=max_colour_temp_kelvins)
 
+    figure_object.suptitle('Original image (CNN input)')
     pyplot.show()
 
-    print('\nReconstructed example (output of UCN):\n')
-    plot_many_predictors_with_barbs(
+    figure_object, _ = plot_many_predictors_with_barbs(
         predictor_matrix=reconstructed_image_matrix,
         predictor_names=predictor_names,
         min_colour_temp_kelvins=min_colour_temp_kelvins,
         max_colour_temp_kelvins=max_colour_temp_kelvins)
 
+    figure_object.suptitle('Reconstructed image (upconvnet output)')
+    pyplot.show()
+
+
+def apply_ucn_example2(
+        validation_image_dict, normalization_dict, ucn_model_object,
+        cnn_model_object):
+    """Uses upconvnet to reconstruct extreme validation example.
+
+    :param validation_image_dict: Dictionary created by `read_many_image_files`.
+    :param normalization_dict: Dictionary created by
+        `get_image_normalization_params`.
+    :param ucn_model_object: Trained instance of `keras.models.Model`,
+        representing the upconvnet.
+    :param cnn_model_object: Trained instance of `keras.models.Model`,
+        representing the CNN that goes with the upconvnet.
+    """
+
+    target_matrix_s01 = validation_image_dict[TARGET_MATRIX_KEY]
+    example_index = numpy.unravel_index(
+        numpy.argmax(target_matrix_s01), target_matrix_s01.shape
+    )[0]
+
+    image_matrix = validation_image_dict[PREDICTOR_MATRIX_KEY][
+        example_index, ...]
+    predictor_names = validation_image_dict[PREDICTOR_NAMES_KEY]
+
+    image_matrix_norm, _ = normalize_images(
+        predictor_matrix=image_matrix + 0.,
+        predictor_names=predictor_names, normalization_dict=normalization_dict)
+    image_matrix_norm = numpy.expand_dims(image_matrix_norm, axis=0)
+
+    feature_matrix = _apply_cnn(
+        cnn_model_object=cnn_model_object, predictor_matrix=image_matrix_norm,
+        output_layer_name=get_cnn_flatten_layer(cnn_model_object),
+        verbose=False)
+
+    reconstructed_image_matrix_norm = ucn_model_object.predict(
+        feature_matrix, batch_size=1)
+
+    reconstructed_image_matrix = denormalize_images(
+        predictor_matrix=reconstructed_image_matrix_norm,
+        predictor_names=predictor_names, normalization_dict=normalization_dict
+    )[0, ...]
+
+    temperature_index = predictor_names.index(TEMPERATURE_NAME)
+    combined_temp_matrix_kelvins = numpy.concatenate(
+        (image_matrix[..., temperature_index],
+         reconstructed_image_matrix[..., temperature_index]),
+        axis=0)
+
+    min_colour_temp_kelvins = numpy.percentile(combined_temp_matrix_kelvins, 1)
+    max_colour_temp_kelvins = numpy.percentile(combined_temp_matrix_kelvins, 99)
+
+    figure_object, _ = plot_many_predictors_with_barbs(
+        predictor_matrix=image_matrix,
+        predictor_names=predictor_names,
+        min_colour_temp_kelvins=min_colour_temp_kelvins,
+        max_colour_temp_kelvins=max_colour_temp_kelvins)
+
+    figure_object.suptitle('Original image (CNN input)')
+    pyplot.show()
+
+    figure_object, _ = plot_many_predictors_with_barbs(
+        predictor_matrix=reconstructed_image_matrix,
+        predictor_names=predictor_names,
+        min_colour_temp_kelvins=min_colour_temp_kelvins,
+        max_colour_temp_kelvins=max_colour_temp_kelvins)
+
+    figure_object.suptitle('Reconstructed image (upconvnet output)')
     pyplot.show()
 
 
@@ -3681,33 +3527,45 @@ def _normalize_features(feature_matrix, feature_means=None,
     return feature_matrix, feature_means, feature_standard_deviations
 
 
-def _fit_svd(feature_matrix, num_modes_to_keep):
+def _fit_svd(baseline_feature_matrix, test_feature_matrix, num_modes_to_keep):
     """Fits SVD (singular-value decomposition) model.
 
-    E = number of examples (storm objects)
+    B = number of baseline examples (storm objects)
+    T = number of testing examples (storm objects)
     Z = number of scalar features (produced by dense layer of a CNN)
-    K = number of modes retained by the SVD model
+    K = number of modes (top eigenvectors) retained
 
-    :param feature_matrix: E-by-Z numpy array of features.
-    :param num_modes_to_keep: Number of modes to be retained by SVD model (K in
-        the above discussion).
+    The SVD model will be fit only to the baseline set, but both the baseline
+    and testing sets will be used to compute normalization parameters (means and
+    standard deviations).  Before, when only the baseline set was used to
+    compute normalization params, the testing set had huge standard deviations,
+    which caused the results of novelty detection to be physically unrealistic.
+
+    :param baseline_feature_matrix: B-by-Z numpy array of features.
+    :param test_feature_matrix: T-by-Z numpy array of features.
+    :param num_modes_to_keep: Number of modes (top eigenvectors) to use in SVD
+        model.  This is K in the above discussion.
     :return: svd_dictionary: Dictionary with the following keys.
-    svd_dictionary['eof_matrix']: Z-by-K numpy array, where each row is an EOF
-        (empirical orthogonal function).
+    svd_dictionary['eof_matrix']: Z-by-K numpy array, where each column is an
+        EOF (empirical orthogonal function).
     svd_dictionary['feature_means']: length-Z numpy array with mean value of
         each feature (before transformation).
     svd_dictionary['feature_standard_deviations']: length-Z numpy array with
         standard deviation of each feature (before transformation).
     """
 
-    # TODO(thunderhoser): Documentation might be wrong.  I'm not sure if the
-    # EOFs are the rows or columns.
+    combined_feature_matrix = numpy.concatenate(
+        (baseline_feature_matrix, test_feature_matrix), axis=0)
 
-    feature_matrix, feature_means, feature_standard_deviations = (
-        _normalize_features(feature_matrix)
+    combined_feature_matrix, feature_means, feature_standard_deviations = (
+        _normalize_features(feature_matrix=combined_feature_matrix)
     )
 
-    eof_matrix = numpy.linalg.svd(feature_matrix)[-1]
+    num_baseline_examples = baseline_feature_matrix.shape[0]
+    baseline_feature_matrix = combined_feature_matrix[
+        :num_baseline_examples, ...]
+
+    eof_matrix = numpy.linalg.svd(baseline_feature_matrix)[-1]
 
     return {
         EOF_MATRIX_KEY: numpy.transpose(eof_matrix)[..., :num_modes_to_keep],
@@ -3785,9 +3643,9 @@ def do_novelty_detection(
         discussion, Q = number of novel test images found.
     novelty_dict['novel_image_matrix_actual']: Q-by-M-by-N-by-C numpy array of
         novel test images.
-    novelty_dict['novel_image_matrix_recon']: Same as
+    novelty_dict['novel_image_matrix_upconv']: Same as
         "novel_image_matrix_actual" but reconstructed by the upconvnet.
-    novelty_dict['novel_image_matrix_recon_expected']: Same as
+    novelty_dict['novel_image_matrix_upconv_svd']: Same as
         "novel_image_matrix_actual" but reconstructed by SVD (singular-value
         decomposition) and the upconvnet.
 
@@ -3799,7 +3657,6 @@ def do_novelty_detection(
             'image_normalization_dict cannot be None.  Must be specified.')
         raise TypeError(error_string)
 
-    num_baseline_examples = baseline_image_matrix.shape[0]
     num_test_examples = test_image_matrix.shape[0]
 
     baseline_image_matrix_norm, _ = normalize_images(
@@ -3823,81 +3680,212 @@ def do_novelty_detection(
         output_layer_name=cnn_feature_layer_name)
 
     novel_indices = []
-    novel_image_matrix_recon = None
-    novel_image_matrix_recon_expected = None
+    novel_image_matrix_upconv = None
+    novel_image_matrix_upconv_svd = None
 
     for k in range(num_novel_test_images):
         print('Finding {0:d}th of {1:d} novel test images...'.format(
             k + 1, num_novel_test_images))
 
         if len(novel_indices) == 0:
-            this_feature_matrix = baseline_feature_matrix
+            this_baseline_feature_matrix = baseline_feature_matrix + 0.
+            this_test_feature_matrix = test_feature_matrix + 0.
         else:
             novel_indices_numpy = numpy.array(novel_indices, dtype=int)
-            this_feature_matrix = numpy.concatenate(
+            this_baseline_feature_matrix = numpy.concatenate(
                 (baseline_feature_matrix,
                  test_feature_matrix[novel_indices_numpy, ...]),
                 axis=0)
 
+            this_test_feature_matrix = numpy.delete(
+                test_feature_matrix, obj=novel_indices_numpy, axis=0)
+
         svd_dictionary = _fit_svd(
-            feature_matrix=this_feature_matrix,
+            baseline_feature_matrix=this_baseline_feature_matrix,
+            test_feature_matrix=this_test_feature_matrix,
             num_modes_to_keep=num_svd_modes_to_keep)
 
         svd_errors = numpy.full(num_test_examples, numpy.nan)
-        test_feature_matrix_expected = numpy.full(
+        test_feature_matrix_svd = numpy.full(
             test_feature_matrix.shape, numpy.nan)
 
         for i in range(num_test_examples):
             if i in novel_indices:
                 continue
 
-            test_feature_matrix_expected[i, ...] = _apply_svd(
+            test_feature_matrix_svd[i, ...] = _apply_svd(
                 feature_vector=test_feature_matrix[i, ...],
                 svd_dictionary=svd_dictionary)
 
             svd_errors[i] = numpy.linalg.norm(
-                test_feature_matrix_expected[i, ...] -
-                test_feature_matrix[i, ...]
+                test_feature_matrix_svd[i, ...] - test_feature_matrix[i, ...]
             )
 
         new_novel_index = numpy.nanargmax(svd_errors)
         novel_indices.append(new_novel_index)
 
-        new_reconstructed_matrix = ucn_model_object.predict(
+        new_image_matrix_upconv = ucn_model_object.predict(
             test_feature_matrix[[new_novel_index], ...], batch_size=1)
 
-        new_reconstructed_matrix_expected = ucn_model_object.predict(
-            test_feature_matrix_expected[[new_novel_index], ...], batch_size=1)
+        new_image_matrix_upconv_svd = ucn_model_object.predict(
+            test_feature_matrix_svd[[new_novel_index], ...], batch_size=1)
 
-        if novel_image_matrix_recon is None:
-            novel_image_matrix_recon = new_reconstructed_matrix + 0.
-            novel_image_matrix_recon_expected = (
-                new_reconstructed_matrix_expected + 0.)
+        if novel_image_matrix_upconv is None:
+            novel_image_matrix_upconv = new_image_matrix_upconv + 0.
+            novel_image_matrix_upconv_svd = new_image_matrix_upconv_svd + 0.
         else:
-            novel_image_matrix_recon = numpy.concatenate(
-                (novel_image_matrix_recon, new_reconstructed_matrix), axis=0)
-            novel_image_matrix_recon_expected = numpy.concatenate(
-                (novel_image_matrix_recon_expected,
-                 new_reconstructed_matrix_expected),
+            novel_image_matrix_upconv = numpy.concatenate(
+                (novel_image_matrix_upconv, new_image_matrix_upconv), axis=0)
+            novel_image_matrix_upconv_svd = numpy.concatenate(
+                (novel_image_matrix_upconv_svd, new_image_matrix_upconv_svd),
                 axis=0)
 
     novel_indices = numpy.array(novel_indices, dtype=int)
 
-    novel_image_matrix_recon = denormalize_images(
-        predictor_matrix=novel_image_matrix_recon,
+    novel_image_matrix_upconv = denormalize_images(
+        predictor_matrix=novel_image_matrix_upconv,
         predictor_names=predictor_names,
         normalization_dict=image_normalization_dict)
 
-    novel_image_matrix_recon_expected = denormalize_images(
-        predictor_matrix=novel_image_matrix_recon_expected,
+    novel_image_matrix_upconv_svd = denormalize_images(
+        predictor_matrix=novel_image_matrix_upconv_svd,
         predictor_names=predictor_names,
         normalization_dict=image_normalization_dict)
 
     return {
         NOVEL_IMAGES_ACTUAL_KEY: test_image_matrix[novel_indices, ...],
-        NOVEL_IMAGES_RECON_KEY: novel_image_matrix_recon,
-        NOVEL_IMAGES_RECON_EXPECTED_KEY: novel_image_matrix_recon_expected
+        NOVEL_IMAGES_UPCONV_KEY: novel_image_matrix_upconv,
+        NOVEL_IMAGES_UPCONV_SVD_KEY: novel_image_matrix_upconv_svd
     }
+
+
+def _plot_novelty_for_many_predictors(
+        novelty_matrix, predictor_names, max_absolute_temp_kelvins,
+        max_absolute_refl_dbz):
+    """Plots novelty for each predictor on 2-D grid with wind barbs overlain.
+
+    M = number of rows in grid
+    N = number of columns in grid
+    C = number of predictors
+
+    :param novelty_matrix: M-by-N-by-C numpy array of novelty values.
+    :param predictor_names: length-C list of predictor names.
+    :param max_absolute_temp_kelvins: Max absolute temperature in colour scheme.
+        Minimum temperature in colour scheme will be
+        -1 * `max_absolute_temp_kelvins`, and this will be a diverging scheme
+        centered at zero.
+    :param max_absolute_refl_dbz: Same but for reflectivity.
+    :return: figure_object: See doc for `_init_figure_panels`.
+    :return: axes_objects_2d_list: Same.
+    """
+
+    u_wind_matrix_m_s01 = novelty_matrix[
+        ..., predictor_names.index(U_WIND_NAME)]
+    v_wind_matrix_m_s01 = novelty_matrix[
+        ..., predictor_names.index(V_WIND_NAME)]
+
+    non_wind_predictor_names = [
+        p for p in predictor_names if p not in [U_WIND_NAME, V_WIND_NAME]
+    ]
+
+    figure_object, axes_objects_2d_list = _init_figure_panels(
+        num_rows=len(non_wind_predictor_names), num_columns=1)
+
+    for m in range(len(non_wind_predictor_names)):
+        this_predictor_index = predictor_names.index(
+            non_wind_predictor_names[m])
+
+        if non_wind_predictor_names[m] == REFLECTIVITY_NAME:
+            this_min_colour_value = -1 * max_absolute_refl_dbz
+            this_max_colour_value = max_absolute_refl_dbz + 0.
+            this_colour_map_object = pyplot.cm.PuOr
+        else:
+            this_min_colour_value = -1 * max_absolute_temp_kelvins
+            this_max_colour_value = max_absolute_temp_kelvins + 0.
+            this_colour_map_object = pyplot.cm.bwr
+
+        this_colour_bar_object = plot_predictor_2d(
+            predictor_matrix=novelty_matrix[..., this_predictor_index],
+            colour_map_object=this_colour_map_object, colour_norm_object=None,
+            min_colour_value=this_min_colour_value,
+            max_colour_value=this_max_colour_value,
+            axes_object=axes_objects_2d_list[m][0])
+
+        plot_wind_2d(u_wind_matrix_m_s01=u_wind_matrix_m_s01,
+                     v_wind_matrix_m_s01=v_wind_matrix_m_s01,
+                     axes_object=axes_objects_2d_list[m][0])
+
+        this_colour_bar_object.set_label(non_wind_predictor_names[m])
+
+    return figure_object, axes_objects_2d_list
+
+
+def plot_novelty_detection(image_dict, novelty_dict, test_index):
+    """Plots results of novelty detection.
+
+    :param image_dict: Dictionary created by `read_many_image_files`, containing
+        input data for novelty detection.
+    :param novelty_dict: Dictionary created by `do_novelty_detection`,
+        containing results.
+    :param test_index: Array index.  The [i]th-most novel test example will be
+        plotted, where i = `test_index`.
+    """
+
+    predictor_names = image_dict[PREDICTOR_NAMES_KEY]
+    temperature_index = predictor_names.index(TEMPERATURE_NAME)
+    reflectivity_index = predictor_names.index(REFLECTIVITY_NAME)
+
+    image_matrix_actual = novelty_dict[NOVEL_IMAGES_ACTUAL_KEY][test_index, ...]
+    image_matrix_upconv = novelty_dict[NOVEL_IMAGES_UPCONV_KEY][test_index, ...]
+    image_matrix_upconv_svd = novelty_dict[
+        NOVEL_IMAGES_UPCONV_SVD_KEY][test_index, ...]
+
+    combined_matrix_kelvins = numpy.concatenate(
+        (image_matrix_actual[..., temperature_index],
+         image_matrix_upconv[..., temperature_index]),
+        axis=0)
+
+    min_colour_temp_kelvins = numpy.percentile(combined_matrix_kelvins, 1)
+    max_colour_temp_kelvins = numpy.percentile(combined_matrix_kelvins, 99)
+
+    this_figure_object, _ = plot_many_predictors_with_barbs(
+        predictor_matrix=image_matrix_actual, predictor_names=predictor_names,
+        min_colour_temp_kelvins=min_colour_temp_kelvins,
+        max_colour_temp_kelvins=max_colour_temp_kelvins)
+
+    base_title_string = '{0:d}th-most novel example'.format(test_index + 1)
+    this_title_string = '{0:s}: actual'.format(base_title_string)
+    this_figure_object.suptitle(this_title_string)
+    pyplot.show()
+
+    this_figure_object, _ = plot_many_predictors_with_barbs(
+        predictor_matrix=image_matrix_upconv,
+        predictor_names=predictor_names,
+        min_colour_temp_kelvins=min_colour_temp_kelvins,
+        max_colour_temp_kelvins=max_colour_temp_kelvins)
+
+    this_title_string = r'{0:s}: upconvnet reconstruction'.format(
+        base_title_string)
+    this_title_string += r' ($\mathbf{X}_{up}$)'
+    this_figure_object.suptitle(this_title_string)
+    pyplot.show()
+
+    novelty_matrix = image_matrix_upconv - image_matrix_upconv_svd
+    max_absolute_temp_kelvins = numpy.percentile(
+        numpy.absolute(novelty_matrix[..., temperature_index]), 99)
+    max_absolute_refl_dbz = numpy.percentile(
+        numpy.absolute(novelty_matrix[..., reflectivity_index]), 99)
+
+    this_figure_object, _ = _plot_novelty_for_many_predictors(
+        novelty_matrix=novelty_matrix, predictor_names=predictor_names,
+        max_absolute_temp_kelvins=max_absolute_temp_kelvins,
+        max_absolute_refl_dbz=max_absolute_refl_dbz)
+
+    this_title_string = r'{0:s}: novelty'.format(
+        base_title_string)
+    this_title_string += r' ($\mathbf{X}_{up} - \mathbf{X}_{up,svd}$)'
+    this_figure_object.suptitle(this_title_string)
+    pyplot.show()
 
 
 def do_novelty_detection_example(
@@ -3939,48 +3927,48 @@ def do_novelty_detection_example(
         cnn_model_object=cnn_model_object,
         cnn_feature_layer_name=get_cnn_flatten_layer(cnn_model_object),
         ucn_model_object=ucn_model_object,
-        num_novel_test_images=1)
+        num_novel_test_images=4)
 
-    predictor_names = validation_image_dict[PREDICTOR_NAMES_KEY]
-    temperature_index = predictor_names.index(TEMPERATURE_NAME)
-    min_colour_temp_kelvins = numpy.percentile(
-        novelty_dict[NOVEL_IMAGES_ACTUAL_KEY][..., temperature_index], 1)
-    max_colour_temp_kelvins = numpy.percentile(
-        novelty_dict[NOVEL_IMAGES_ACTUAL_KEY][..., temperature_index], 99)
 
-    figure_object, _ = plot_many_predictors_with_barbs(
-        predictor_matrix=novelty_dict[NOVEL_IMAGES_ACTUAL_KEY][0, ...],
-        predictor_names=validation_image_dict[PREDICTOR_NAMES_KEY],
-        min_colour_temp_kelvins=min_colour_temp_kelvins,
-        max_colour_temp_kelvins=max_colour_temp_kelvins)
+def plot_novelty_detection_example1(validation_image_dict, novelty_dict):
+    """Plots first-most novel example, selon novelty detection.
 
-    figure_object.suptitle('Actual test image')
-    pyplot.show()
+    :param validation_image_dict: Dictionary created by `read_many_image_files`.
+    :param novelty_dict: Dictionary created by `do_novelty_detection`.
+    """
 
-    figure_object, _ = plot_many_predictors_with_barbs(
-        predictor_matrix=novelty_dict[NOVEL_IMAGES_RECON_KEY][0, ...],
-        predictor_names=validation_image_dict[PREDICTOR_NAMES_KEY],
-        min_colour_temp_kelvins=min_colour_temp_kelvins,
-        max_colour_temp_kelvins=max_colour_temp_kelvins)
+    plot_novelty_detection(image_dict=validation_image_dict,
+                           novelty_dict=novelty_dict, test_index=0)
 
-    figure_object.suptitle('Reconstruction of test image by upconvnet')
-    pyplot.show()
 
-    difference_matrix = (
-        novelty_dict[NOVEL_IMAGES_RECON_KEY] -
-        novelty_dict[NOVEL_IMAGES_RECON_EXPECTED_KEY]
-    )
+def plot_novelty_detection_example2(validation_image_dict, novelty_dict):
+    """Plots second-most novel example, selon novelty detection.
 
-    min_colour_temp_kelvins = numpy.percentile(
-        difference_matrix[..., temperature_index], 1)
-    max_colour_temp_kelvins = numpy.percentile(
-        difference_matrix[..., temperature_index], 99)
+    :param validation_image_dict: Dictionary created by `read_many_image_files`.
+    :param novelty_dict: Dictionary created by `do_novelty_detection`.
+    """
 
-    figure_object, _ = plot_many_predictors_with_barbs(
-        predictor_matrix=difference_matrix[0, ...],
-        predictor_names=validation_image_dict[PREDICTOR_NAMES_KEY],
-        min_colour_temp_kelvins=min_colour_temp_kelvins,
-        max_colour_temp_kelvins=max_colour_temp_kelvins)
+    plot_novelty_detection(image_dict=validation_image_dict,
+                           novelty_dict=novelty_dict, test_index=1)
 
-    figure_object.suptitle('Novel part of test image')
-    pyplot.show()
+
+def plot_novelty_detection_example3(validation_image_dict, novelty_dict):
+    """Plots third-most novel example, selon novelty detection.
+
+    :param validation_image_dict: Dictionary created by `read_many_image_files`.
+    :param novelty_dict: Dictionary created by `do_novelty_detection`.
+    """
+
+    plot_novelty_detection(image_dict=validation_image_dict,
+                           novelty_dict=novelty_dict, test_index=2)
+
+
+def plot_novelty_detection_example4(validation_image_dict, novelty_dict):
+    """Plots fourth-most novel example, selon novelty detection.
+
+    :param validation_image_dict: Dictionary created by `read_many_image_files`.
+    :param novelty_dict: Dictionary created by `do_novelty_detection`.
+    """
+
+    plot_novelty_detection(image_dict=validation_image_dict,
+                           novelty_dict=novelty_dict, test_index=3)
